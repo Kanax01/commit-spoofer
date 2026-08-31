@@ -105,4 +105,4 @@ py spoof.py --skip-gen \
 
 ## License
 
-No license file included.
+Don't copy our shit without permittion
