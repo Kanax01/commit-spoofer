@@ -1,8 +1,9 @@
+<div align="center">
+
 # Commit Spoof
+### Makes you busy as a bee
 
-`commit-spoof` is a small Python utility for generating synthetic Git commit activity in a repository. It creates random placeholder files, appends random values, commits the changes with dates spread across a requested period, and can optionally push the result to a remote.
-
-Use it only in repositories you own or are explicitly authorized to modify. Generated history is synthetic and should not be presented as a record of real development activity.
+</div>
 
 ## Requirements
 
