@@ -6,6 +6,7 @@ import platform
 import random
 import re
 import shutil
+import stat
 import sys
 from datetime import datetime, timedelta, timezone
 from subprocess import Popen, PIPE
@@ -97,6 +98,79 @@ def resolve_repo_path(path, remote=None):
         return os.path.abspath(resolved)
 
     return os.path.abspath(os.path.expanduser(path))
+
+def parse_cli_date(date_str, label):
+    try:
+        month_str, day_str, year_str = date_str.split('/')
+        month, day, year = int(month_str), int(day_str), int(year_str)
+    except (ValueError, AttributeError):
+        sys.exit(f'Invalid {label} date "{date_str}". Use M/D/YYYY (e.g. 1/1/2025).')
+    if year < 100:
+        year += 2000
+    try:
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except ValueError:
+        sys.exit(f'Invalid {label} date "{date_str}". Use M/D/YYYY (e.g. 1/1/2025).')
+
+def resolve_date_range(start_arg, end_arg):
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = parse_cli_date(end_arg, '--end') if end_arg else now
+    if start_arg:
+        start_date = parse_cli_date(start_arg, '--start')
+    else:
+        start_date = end_date - timedelta(days=365)
+
+    start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_date = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if start_date > end_date:
+        sys.exit('--start must be on or before --end')
+
+    total_days = (end_date.date() - start_date.date()).days + 1
+    range_label = f'{start_date.strftime("%m/%d/%Y")} to {end_date.strftime("%m/%d/%Y")}'
+    return start_date, total_days, range_label
+
+def repo_has_commits(repo_path):
+    returncode, out, _ = run_cmd_result(['git', 'rev-list', '--count', 'HEAD'], cwd=repo_path)
+    return returncode == 0 and out.strip() not in ('', '0')
+
+def _handle_remove_readonly(func, path, exc):
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+def _remove_path(path):
+    if not os.path.exists(path):
+        return
+    if os.path.isdir(path):
+        shutil.rmtree(path, onexc=_handle_remove_readonly)
+    else:
+        os.chmod(path, stat.S_IWRITE)
+        os.remove(path)
+
+def _clear_worktree(repo_path):
+    for entry in os.listdir(repo_path):
+        if entry == '.git':
+            continue
+        _remove_path(os.path.join(repo_path, entry))
+
+def reset_repo(repo_path, branch):
+    git_dir = os.path.join(repo_path, '.git')
+    if os.path.exists(git_dir):
+        temp_branch = '__spoof_reset__'
+        code, _, _ = run_cmd_result(['git', 'checkout', '--orphan', temp_branch], cwd=repo_path)
+        if code == 0:
+            run_cmd_result(['git', 'rm', '-rf', '.'], cwd=repo_path)
+            run_cmd_result(['git', 'clean', '-fdx'], cwd=repo_path)
+            _clear_worktree(repo_path)
+            run_cmd_result(['git', 'branch', '-D', branch], cwd=repo_path)
+            run_cmd_result(['git', 'branch', '-M', branch], cwd=repo_path)
+            run_cmd_result(['git', 'update-ref', '-d', 'HEAD'], cwd=repo_path)
+            return
+        _remove_path(git_dir)
+
+    os.makedirs(repo_path, exist_ok=True)
+    _clear_worktree(repo_path)
+    run_cmd(['git', 'init', '-b', branch], cwd=repo_path)
 
 def host_alias_for(hostname, key_name):
     return f'{hostname}-{key_name}'
@@ -502,8 +576,10 @@ def generate_commits(repo_path, start_date, total_days, probability, max_commits
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--days', type=int, default=365,
-                        help='Number of days to generate (default: 365)')
+    parser.add_argument('--start', type=str,
+                        help='Start date M/D/YYYY (default: 365 days before --end)')
+    parser.add_argument('--end', type=str,
+                        help='End date M/D/YYYY (default: today)')
     parser.add_argument('--probability', type=int, default=75,
                         help='Base probability of committing on a day (0-100, default: 75)')
     parser.add_argument('--max-commits', type=int, default=8,
@@ -527,6 +603,8 @@ def main():
                         help='Skip automatic SSH key setup when using an SSH remote URL')
     parser.add_argument('--skip-gen', action='store_true',
                         help='Skip commit generation; only set up SSH and push existing history')
+    parser.add_argument('--append', action='store_true',
+                        help='Append commits to existing history instead of resetting the repo')
     
     args = parser.parse_args()
     
@@ -556,6 +634,14 @@ def main():
             sys.exit(f'No git repository found at {repo_path}')
         run_cmd(['git', 'init', '-b', args.branch], cwd=repo_path)
     
+    if not args.skip_gen and not args.append and repo_has_commits(repo_path):
+        returncode, out, _ = run_cmd_result(['git', 'rev-list', '--count', 'HEAD'], cwd=repo_path)
+        print(
+            f'Found {out.strip()} existing commits. Resetting {repo_path} before generating...',
+            flush=True
+        )
+        reset_repo(repo_path, args.branch)
+    
     run_cmd(['git', 'config', 'user.name', args.name], cwd=repo_path)
     run_cmd(['git', 'config', 'user.email', args.email], cwd=repo_path)
     run_cmd(['git', 'config', 'commit.gpgsign', 'false'], cwd=repo_path)
@@ -566,12 +652,11 @@ def main():
             sys.exit(f'Repository at {repo_path} has no commits to push.')
         print(f'Skipping commit generation. Pushing {out.strip()} existing commits from {repo_path}.', flush=True)
     else:
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=args.days)
-        
-        expected_commits = int(args.days * (args.probability / 100) * ((args.max_commits + 1) / 2))
+        start_date, total_days, range_label = resolve_date_range(args.start, args.end)
+
+        expected_commits = int(total_days * (args.probability / 100) * ((args.max_commits + 1) / 2))
         print(
-            f'Generating commits in {repo_path} '
+            f'Generating commits in {repo_path} for {range_label} '
             f'(expect roughly {expected_commits} commits; this can take several minutes)...',
             flush=True
         )
@@ -579,7 +664,7 @@ def main():
         generate_commits(
             repo_path,
             start_date,
-            args.days,
+            total_days,
             args.probability,
             args.max_commits,
             args.no_weekends,
@@ -595,7 +680,8 @@ def main():
         run_cmd(['git', 'push', '-u', 'origin', args.branch, '--force'], cwd=repo_path)
         print(f'Pushed {repo_path} to {args.remote}', flush=True)
     elif not args.skip_gen:
-        print(f'Generated {args.days} days of commits in {repo_path}')
+        _, _, range_label = resolve_date_range(args.start, args.end)
+        print(f'Generated commits for {range_label} in {repo_path}')
 
 if __name__ == "__main__":
     main()

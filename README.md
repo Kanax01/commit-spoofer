@@ -5,111 +5,103 @@
 
 </div>
 
-Generates backdated Git commit history in a local repo. Optionally sets up SSH and force-pushes to a remote.
+Generate backdated Git commit history locally. Optionally configure SSH and force-push to GitHub.
 
 ## Requirements
 
 - Python 3.8+
 - Git on `PATH`
-- No third-party Python packages
 
 ## Quick Start
 
-Generate a year of commits locally:
-
-```bash
-py spoof.py --repo-path my-repo --days 365
-```
-
-Generate and push to GitHub (SSH setup is handled interactively):
-
-```bash
+```powershell
 py spoof.py \
-  --repo-path my-repo \
-  --remote git@github.com:OWNER/REPO.git \
-  --branch main \
+  --repo-path /home/Entropic-Code/lol \
+  --start 1/1/2025 --end 12/21/2025 \
+  --probability 50 --max-commits 5 \
   --name "Your Name" \
-  --email "you@example.com"
+  --email "you@example.com" \
+  --remote git@github.com:OWNER/REPO.git \
+  --branch main
 ```
 
-Push existing commits without generating more:
+That generates commits across the date range, resets the repo if it already has history, sets up SSH if needed, and force-pushes.
 
-```bash
-py spoof.py \
-  --skip-gen \
+### Date range
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--start M/D/YYYY` | 365 days before `--end` | First day (inclusive) |
+| `--end M/D/YYYY` | today | Last day (inclusive) |
+
+```powershell
+# All of 2025
+py spoof.py --repo-path my-repo --start 1/1/2025 --end 12/31/2025
+
+# From a date through today
+py spoof.py --repo-path my-repo --start 1/1/2025
+
+# Last ~year ending today
+py spoof.py --repo-path my-repo
+```
+
+### Windows paths
+
+`/home/...` and relative paths map to `%USERPROFILE%\spofer\`:
+
+```
+/home/Entropic-Code/lol  →  C:\Users\You\spofer\Entropic-Code\lol
+```
+
+Omit `--repo-path` to use `%USERPROFILE%\spofer\<repo-name>` derived from `--remote`.
+
+### Push only (no generation)
+
+```powershell
+py spoof.py --skip-gen \
   --repo-path my-repo \
   --remote git@github.com:OWNER/REPO.git \
   --branch main \
   --email "you@example.com"
 ```
-
-On Windows, relative paths and `/home/...` paths are placed under `%USERPROFILE%\spofer\`. For example, `/home/Entropic-Code/lol` becomes `C:\Users\You\spofer\Entropic-Code\lol`. Omit `--repo-path` to default to `%USERPROFILE%\spofer\<repo-name>` derived from `--remote`.
-
-Generation can take several minutes for a full year. Progress is printed every 25 commits.
 
 ## Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--repo-path PATH` | from `--remote` | Target repo. Created and initialized if missing. |
-| `--days N` | `365` | Days of history to generate (UTC). |
-| `--probability N` | `75` | Chance each day gets commits (`0`–`100`). |
+| `--repo-path PATH` | from `--remote` | Target repo. Created if missing. |
+| `--start M/D/YYYY` | 365 days before `--end` | First day to generate commits. |
+| `--end M/D/YYYY` | today | Last day to generate commits. |
+| `--probability N` | `75` | Daily commit chance (`0`–`100`). |
 | `--max-commits N` | `8` | Max commits per active day (`1`–`50`). |
 | `--no-weekends` | off | Skip Saturday and Sunday. |
-| `--trend N` | `0.0` | Activity drift over time (`-1.0` to `1.0`). |
+| `--trend N` | `0.0` | Activity drift (`-1.0` to `1.0`). |
 | `--remote URL` | none | Set `origin` and force-push. |
 | `--branch NAME` | `main` | Branch to init and push. |
-| `--name NAME` | `Git User` | Git `user.name` for the repo. |
+| `--name NAME` | `Git User` | Git `user.name`. |
 | `--email ADDRESS` | `git@localhost` | Git `user.email` and SSH key comment. |
-| `--skip-gen` | off | Skip generation; SSH setup + push only. Requires `--remote`. |
-| `--skip-ssh-setup` | off | Skip automatic SSH key setup. |
+| `--skip-gen` | off | Push existing history only. Requires `--remote`. |
+| `--append` | off | Stack onto existing commits instead of resetting. |
+| `--skip-ssh-setup` | off | Skip automatic SSH setup. |
 
-```bash
-py spoof.py --help
-```
+## Behavior
 
-## SSH
+**Auto-reset** — Re-running without `--skip-gen` or `--append` wipes existing commits and regenerates. No manual folder deletion needed.
 
-When `--remote` is an SSH URL, the script will:
+**Progress** — Prints every 25 commits. A full year can take several minutes.
 
-1. Create `~/.ssh/commit-spoof` if needed (reuses existing key if auth works).
-2. Write an SSH config entry (e.g. `github.com-commit-spoof`).
-3. Offer to install GitHub CLI via `winget` / `apt` / `brew` and upload the key, or show the public key to add manually at [github.com/settings/ssh/new](https://github.com/settings/ssh/new).
-4. Test the connection before pushing.
+**SSH** — With an SSH `--remote`, the script creates `~/.ssh/commit-spoof`, writes an SSH config alias, and tests the connection before pushing. It can install `gh` via `winget`/`apt`/`brew` or show the public key to add at [github.com/settings/ssh/new](https://github.com/settings/ssh/new). Reuses the existing key if auth already works.
 
-Passphrase is optional — press Enter to skip. Use `--skip-ssh-setup` if you already have SSH configured.
-
-## Starting Fresh
-
-Re-running without `--skip-gen` **appends** more commits. To wipe and regenerate:
-
-```powershell
-# Windows
-Remove-Item -Recurse -Force "$env:USERPROFILE\spofer\my-repo"
-```
-
-```bash
-# Linux/macOS
-rm -rf ~/spofer/my-repo
-```
-
-Review local history before pushing. `--remote` always force-pushes.
-
-## Safety
-
-- Use a disposable repo first.
-- `--remote` overwrites remote branch history.
-- `git add .` stages everything in the target repo.
-- Do not use this to misrepresent real work or activity.
+**Push** — `--remote` always force-pushes. Review local history first.
 
 ## Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| Seems hung during generation | Normal for 1000+ commits. Wait for progress output. |
-| SSH auth fails | Add the printed public key to GitHub, then retry with `--skip-gen`. |
-| Double commits | Delete the repo folder and regenerate (see above). |
-| Push rejected | Check remote URL, branch name, and push permissions. |
+| Seems hung | Normal for hundreds of commits. Wait for progress lines. |
+| SSH auth fails | Add the printed public key to GitHub, then `--skip-gen` to push. |
+| Want to keep old commits | Pass `--append`. |
+| Push rejected | Check URL, branch, and permissions. |
 
 ## License
 
