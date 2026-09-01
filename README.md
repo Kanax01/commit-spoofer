@@ -108,7 +108,3 @@ py spoof.py --skip-gen \
 | SSH auth fails | Add the printed public key to GitHub, then `--skip-gen` to push. |
 | Want to keep old commits | Pass `--append`. |
 | Push rejected | Check URL, branch, and permissions. |
-
-## License
-
-Don't copy our shit without permittion
