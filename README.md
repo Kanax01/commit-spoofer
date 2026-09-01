@@ -8,10 +8,16 @@ Generate commit history at whatever date range you want
 
 **[Kanax01](https://guns.lol/kanax01)**
 **[Entropy](https://guns.lol/enropic)**
-
-
 </div>
 
+## Demo
+- *Before*
+
+![Before.png](Before.png)
+
+- *After*
+
+![After.png](After.png)
 ## Requirements
 
 - Python 3.8+
