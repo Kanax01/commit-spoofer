@@ -5,12 +5,13 @@
 
 </div>
 
-Generate backdated Git commit history locally. Optionally configure SSH and force-push to GitHub.
+Generate commit history at whatever date range you want
 
 ## Requirements
 
 - Python 3.8+
 - Git on `PATH`
+- GH Cli
 
 ## Quick Start
 
