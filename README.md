@@ -3,9 +3,9 @@
 # Commit Spoof
 ### Makes you busy as a bee
 
-</div>
-
 Generate commit history at whatever date range you want
+
+</div>
 
 ## Requirements
 
